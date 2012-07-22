@@ -1,0 +1,1 @@
+GitoliteLogParser allows you to incrementally parse your gitolite access logs, with the purpose of being notified of events of new character automagically.
