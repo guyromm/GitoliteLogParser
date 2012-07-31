@@ -1,6 +1,8 @@
 GeoIP*.dat
 logs/
 parsed/
+reports/
 venv/
 *~
 *pyc
+*.log
