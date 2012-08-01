@@ -1,310 +1,237 @@
-import sys
-import os
-import re
+import argparse
 import datetime
-import yaml
-import pygeoip
 import json
+import os
 from copy import deepcopy
 
-gio = pygeoip.GeoIP('/usr/share/GeoIP/GeoIP.dat')
-pathout = 'parsed'
-
-root_dir = 'reports'
+import pygeoip
+from mailer import MailMan
 
 
-keys = {
-    'user': 'users',
-    'ip': 'ips',
-    'repo': 'repos',
-    'op': 'ops',
-    'country': 'countries'
-}
-
-
-def mkaggarr():
-    aggarr = {}
-    for key in keys.values():
-        aggarr[key]=[]
-    return aggarr
-
-
-def aggregate(prevagg, alertkeys, dt=None, fn=None):
-    assert dt or fn,"i need a file or line to proceed"
-    if dt:
-        dtstr = '%s-%s-%s'%(dt['stamp'].year,dt['stamp'].month,dt['stamp'].day)
-    else:
-        dtstr = fn2date(fn)
-
-    aggfn = os.path.join(pathout,dtstr+'.yaml')
-
-    if os.path.exists(aggfn):
-        fp = open(aggfn,'r')
-        aggarr = yaml.load(fp)
-    else:
-        print 'creating a new file %s'%aggfn
-        aggarr = mkaggarr()
-
-    alerts=[]
-    if dt:
-        for singular,plural in keys.items():
-            alertkey = '%s-%s'%(singular,dt[singular])
-            if dt[singular] not in prevagg[plural] and alertkey not in alertkeys:
-                alerts.append([singular,dt[singular],dt['raw']])
-                aggarr[plural].append(dt[singular])
-                alertkeys.append(alertkey)
-            else:
-                pass
-                #print 'checking %s %s; is in %s or %s'%(singular,dt[singular],prevagg[plural],aggarr[plural])
-
-
-        wfp = open(aggfn, 'w')
-        yaml.dump(aggarr,wfp)
-
-
-        wfp.close()
-
-    return aggarr, alerts
-
-
-def fn2date(fn,getstr=True):
-    bn = os.path.basename(fn)
-    rt= bn.split('.yaml')[0]
-    if getstr: return rt
-    return datetime.datetime.strptime(rt,'%Y-%m-%d')
-
-def joinaggs(a1,a2):
-    for k in keys.values():
-        for item in a2[k]:
-            a1[k].append(item)
-    return a1
-
-
-def getaggs(upto):
-    aa = mkaggarr()
-    wlkdir = pathout
-    #raise Exception('getting all aggs up to %s: %s'%(upto,wlkdir))
-    tagg = mkaggarr()
-    for w in os.walk(wlkdir):
-        for fn in w[2]:
-            if not '.yaml' in fn:
-                continue
-            if upto.date() >= fn2date(fn, False).date():
-                dagg, alerts = aggregate(
-                    tagg, None, None, os.path.join(pathout, fn))
-                aa = joinaggs(dagg, aa)
-            else:
-                pass
-                #raise Exception('this is too late %s %s'%(upto,fn))
-    return aa
-
-
-def parsefile(fn, date=None):
-    assert os.path.exists(fn)
-    fp = open(fn, 'r')
-    cnt = 0
-    skp = 0
-    alertkeys = {}
-    while True:
-        line = fp.readline()
-        if not line:
-            break
-        #get the line values
-        vals = parseline(line)
-        #get an agg of all values before (to compare)
-        if date and vals['stamp'].date() != date.date():
-            #print 'date mismatch %s %s'%(date,vals['stamp'])
-            skp += 1
-            continue
-        dstr = vals['stamp'].strftime('%Y-%m-%d')
-        if dstr not in alertkeys:
-            alertkeys[dstr] = []
-        totagg = getaggs(upto=vals['stamp'] - datetime.timedelta(days=1))
-        #agg the new line
-        lagg, alerts = aggregate(totagg, alertkeys[dstr], vals)
-        if len(alerts):
-            for a in alerts:
-                print 'ALERT: ', a[0], a[1]  # ,vals['raw']
-        cnt += 1
-    print 'parsed %s lines, skipped %s ;  in %s' % (cnt, skp, fn)
-
-groupnames = ['stamp', 'user', 'ip', 'op_repo']
-
-
-def mkre():
-    matchunit = r'(?P<%s>[^\t]+)'
-    units = [matchunit % name for name in groupnames]
-    restr = '^' + r'\t'.join(units) + r'(|(?P<extra>(.*)))\n$'
-    lpre = re.compile(restr)
-    return lpre
-lpre = mkre()
-
-
-def parseline(line):
-    rt = {}
-    res = lpre.search(line)
-    if not res:
-        raise Exception(line)
-    for k in groupnames:
-        rt[k]=res.group(k)
-    if not re.compile('^git-').search(rt['op_repo']):
-        rt['op']='ERROR'
-        rt['repo']='ERROR'
-    else:
-        oprepo = rt['op_repo'].split(' ')
-        rt['op']=oprepo[0]
-        rt['repo']=' '.join(oprepo[1:]) #'/'.join((' '.join(oprepo[1:])).split('/')[1:])
-    ostamp = rt['stamp']
-    rt['stamp']=datetime.datetime.strptime(rt['stamp'],'%Y-%m-%d.%H:%M:%S')
-    rt['country'] = gio.country_code_by_addr(rt['ip'])
-    del rt['op_repo']
-    #raise Exception(rt['stamp'],ostamp)
-    #print rt
-    rt['raw']=line.strip()
-    return rt
-
-
-read_tpl = ['date', 'user', 'ip', 'raw_repo']
-write_partial_tpl = ['value5', 'value6', 'value7', 'value8',
+GIO = pygeoip.GeoIP('/usr/share/GeoIP/GeoIP.dat')
+READ_TPL = ['date', 'user', 'ip', 'raw_repo']
+WRITE_PARTIAL_TPL = ['value5', 'value6', 'value7', 'value8',
                      'value9', 'value10']
-write_tpl = read_tpl + write_partial_tpl
-parsed_tpl = {
-    'countries': [],
-    'ips': [],
-    'users': [],
-    'repositories': [],
-    'errors': [],
-    'report': {
-        'countries': [],
-        'repositories': [],
-        'users': [],
-    }
-}
+WRITE_TPL = READ_TPL + WRITE_PARTIAL_TPL
 
 
-def dump2json(object2save, date, filename):
-    path = '/'.join([root_dir, date, filename])
-    dirname = os.path.dirname(path)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    to_save = open(path, 'w')
-    json.dump(object2save, to_save, indent=1)
-    to_save.close()
-
-
-def parser(filepath, date=None):
-    assert os.path.exists(filepath)
-    log = open(filepath, 'r')
-    cnt = 0
+class GitoliteLogParser(object):
     parsed = dict()
+    datestring = str()
     prev_datestring = None
     prev_summary = None
+    users_repositories_tmp = []
+    users_countries_tmp = []
+    repositories_tmp = []
+    countries_tmp = []
 
-    if date is not None:
-        # implement load summary by date from file
-        pass
-    else:
-        summary = {
-            'countries': [],
-            'users': [],
-            'repositories': [],
-            'ips': [],
+    root_dir = 'reports'
+
+    parsed_tpl = {
+        'countries': [],
+        'ips': [],
+        'users': [],
+        'repositories': [],
+        'report': {
+            'errors': [],
+            'countries': {},
+            'repositories': {},
+            'users': {},
+            'ips': {},
+            'users_repositories': {},
+            'users_countries': {},
         }
+    }
+    key_plural = {
+        'country': 'countries',
+        'user': 'users',
+        'ip': 'ips',
+        'repo': 'repositories',
+    }
+    summary_tpl = {
+        'countries': [],
+        'users': [],
+        'repositories': [],
+        'ips': [],
+    }
 
-    for line in log.readlines():
-        line = line.replace("\n", "")
-        line = line.replace("'", "")
-        cnt += 1
+    def __init__(self, filepath, emails, date=None):
+        assert os.path.exists(filepath)
+        self.log = open(filepath, 'r')
+        self.line = str()
+        self.emails = emails
+        self.date = date
+        if date is not None:
+            self.summary = self._open_summary()
+        else:
+            self.summary = deepcopy(self.summary_tpl)
+
+        if self.prev_summary is None:
+            self.prev_summary = deepcopy(self.summary)
+
+    def _data_inserter(self, data_object):
+        for key, value in self.key_plural.iteritems():
+            if self.line.get(key) \
+                    and self.line[key] not in data_object[value]:
+                data_object[value].append(self.line[key])
+
+    def _open_summary(self):
+        parse_date = datetime.datetime.strptime(self.date, '%Y-%m-%d')
+        date = parse_date - datetime.timedelta(1)
+        date = date.strftime('%Y-%m-%d')
+        filepath = '/'.join([self.root_dir, date, 'summary.json'])
+        try:
+            assert os.path.exists(filepath)
+        except:
+            return deepcopy(self.summary_tpl)
+        fp = open(filepath, 'r')
+        return json.load(fp)
+
+    def insert_aggregation(self):
+        self._data_inserter(self.parsed[self.datestring])
+
+    def insert_summary(self):
+        self._data_inserter(self.summary)
+
+    def dump2json(self, object2save, date, filename):
+        path = '/'.join([self.root_dir, date, filename])
+        dirname = os.path.dirname(path)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+        to_save = open(path, 'w')
+        json.dump(object2save, to_save, indent=1)
+        to_save.close()
+
+    def _manage_state(self):
+        print 'start new date', self.prev_datestring, self.datestring
+        # clean reports tmp
+        self.users_repositories_tmp = []
+        self.users_countries_tmp = []
+        self.repositories_tmp = []
+        self.countries_tmp = []
+
+        # save summary
+        self.dump2json(
+            self.summary, self.prev_datestring, 'summary.json'
+        )
+
+        # save parsed
+        self.dump2json(
+            self.parsed.get(self.prev_datestring),
+            self.prev_datestring, 'parsed.json'
+        )
+
+        if self.emails:
+            subject = 'Gitolite log report - %s' % self.prev_datestring
+            message = self.parsed[self.prev_datestring]['report']
+            MailMan.mail_send(MailMan(self.emails), subject, message)
+
+        self.prev_datestring = self.datestring
+        self.prev_summary = deepcopy(self.summary)
+
+        if not self.parsed.get(self.datestring):
+            self.parsed[self.datestring] = deepcopy(self.parsed_tpl)
+
+    def _simple_report(self, report):
+        for key, value in self.key_plural.iteritems():
+            if self.line.get(key) \
+                    and self.line[key] not in self.prev_summary[value] \
+                    and not report[value].get(self.line[key]):
+                report[value][self.line[key]] = self.line
+
+    def make_report(self):
+        report = self.parsed[self.datestring]['report']
+        self._simple_report(report)
+
+        if self.line.get('error'):
+            report['errors'].append(self.line)
+
+        if self.line.get('repo') \
+                and self.line['user'] not in self.prev_summary['users'] \
+                and self.line['repo'] not in self.prev_summary['repositories']\
+                and self.line['repo'] not in self.repositories_tmp \
+                and self.line['user'] not in self.users_repositories_tmp:
+            key = '_'.join([self.line['user'], self.line['repo']])
+            report['users_repositories'][key] = self.line
+            self.users_repositories_tmp.append(self.line['user'])
+            self.repositories_tmp.append(self.line['repo'])
+
+        if self.line['user'] not in self.prev_summary['users'] \
+                and self.line['country'] not in self.prev_summary['countries']\
+                and self.line['country'] not in self.countries_tmp \
+                and self.line['user'] not in self.users_countries_tmp:
+            key = '_'.join([self.line['user'], self.line['country']])
+            report['users_countries'][key] = self.line
+            self.users_countries_tmp.append(self.line['user'])
+            self.countries_tmp.append(self.line['country'])
+
+    def parser(self, line):
+        line = line.replace("\n", "").replace("'", "")
         splitted_line = line.split("\t")
         if len(splitted_line) == 4:
-            line = dict(zip(read_tpl, splitted_line))
+            self.line = dict(zip(READ_TPL, splitted_line))
         else:
-            line = dict(zip(write_tpl, splitted_line))
+            self.line = dict(zip(WRITE_TPL, splitted_line))
+
+        self.parsed_date = datetime.datetime.strptime(self.line['date'],
+                                                      '%Y-%m-%d.%H:%M:%S')
+        self.datestring = self.parsed_date.strftime('%Y-%m-%d')
+
+        if self.date and self.datestring != self.date:
+            if self.prev_datestring \
+                    and len(self.parsed[self.prev_datestring]['countries']):
+                self._manage_state()
+            return
 
         # parse line section
-        line['country'] = gio.country_code_by_addr(line['ip'])
-        line['date'] = datetime.datetime.strptime(line['date'],
-                                                  '%Y-%m-%d.%H:%M:%S')
+        self.line['country'] = GIO.country_code_by_addr(self.line['ip'])
+
+        self.line['date'] = self.parsed_date.strftime('%Y-%m-%d.%H:%M:%S')
         try:
-            line['action'], line['repo'] = line['raw_repo'].split(" ")
+            self.line['action'], \
+                self.line['repo'] = self.line['raw_repo'].split(" ")
         except:
-            line['error'] = line['raw_repo']
-        del line['raw_repo']
-        datestring = line['date'].strftime('%Y:%m:%d')
+            self.line['error'] = self.line['raw_repo']
+        del self.line['raw_repo']
 
-        if prev_datestring is None:
-            prev_datestring = datestring
+        if self.prev_datestring is None:
+            self.prev_datestring = self.datestring
 
-        if prev_summary is None:
-            prev_summary = deepcopy(summary)
+        if not self.parsed.get(self.datestring):
+            self.parsed[self.datestring] = deepcopy(self.parsed_tpl)
 
-        if prev_datestring != datestring:
-            print 'start new date', prev_datestring, datestring
-            # save summary
-            dump2json(summary, prev_datestring, 'summary.json')
-            # save parsed
-            dump2json(parsed.get(prev_datestring),
-                      prev_datestring, 'parsed.json')
-
-            prev_datestring = datestring
-            prev_summary = deepcopy(summary)
-
-        if not parsed.get(datestring):
-            parsed[datestring] = deepcopy(parsed_tpl)
-
-        line['date'] = line['date'].strftime('%Y-%m-%d.%H:%M:%S')
+        if self.prev_datestring != self.datestring:
+            self._manage_state()
 
         # insert data to aggretaion
-        if line['country'] not in parsed[datestring]['countries']:
-            parsed[datestring]['countries'].append(line['country'])
-
-        if line['ip'] not in parsed[datestring]['ips']:
-            parsed[datestring]['ips'].append(line['ip'])
-
-        if line['user'] not in parsed[datestring]['users']:
-            parsed[datestring]['users'].append(line['user'])
-
-        if line.get('repo') \
-                and line['repo'] not in parsed[datestring]['repositories']:
-            parsed[datestring]['repositories'].append(line['repo'])
-
-        if line.get('error'):
-            parsed[datestring]['errors'].append(line)
+        self.insert_aggregation()
 
         # time to make diff
-        line_repr = 'User: %s, Country: %s, IP: %s, Repository: %s' \
-                    % (line['user'], line['country'], line['ip'],
-                       line.get('repo'))
-
-        if line['country'] not in prev_summary['countries'] \
-                and line_repr not in parsed[datestring]['report']['countries']:
-            parsed[datestring]['report']['countries'].append(line_repr)
-
-        if line['user'] not in prev_summary['users'] \
-                and line_repr not in parsed[datestring]['report']['users']:
-            parsed[datestring]['report']['users'].append(line_repr)
-
-        if line.get('repo') \
-                and line['repo'] not in prev_summary['repositories'] \
-                and line_repr \
-                not in parsed[datestring]['report']['repositories']:
-            parsed[datestring]['report']['repositories'].append(line_repr)
+        self.make_report()
 
         # insert data to summary
-        if line['country'] not in summary['countries']:
-            summary['countries'].append(line['country'])
+        self.insert_summary()
 
-        if line['user'] not in summary['users']:
-            summary['users'].append(line['user'])
-
-        if line['ip'] not in summary['ips']:
-            summary['ips'].append(line['ip'])
-
-        if line.get('repo') \
-                and line['repo'] not in summary['repositories']:
-            summary['repositories'].append(line['repo'])
+    def reader(self):
+        for line in self.log.readlines():
+            self.parser(line)
 
 
 if __name__ == '__main__':
-    #parsefile(sys.argv[1], date)
-    parser(sys.argv[1])
+    optparser = argparse.ArgumentParser(
+        description='Gitolie log file parser', add_help=True)
+
+    optparser.add_argument('--filepath', action='store', dest='filepath',
+                           help='path to gitolite log file')
+
+    optparser.add_argument('--email', action='append', dest='emails',
+                           help='emails for send reports')
+
+    optparser.add_argument('--date', action='store', dest='date',
+                           help='parse log row only this date.'
+                           ' format: YYYY:MM:DD')
+    args = optparser.parse_args()
+
+    # init and run parser
+    parser = GitoliteLogParser(args.filepath, args.emails, args.date)
+    parser.reader()
