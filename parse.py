@@ -123,6 +123,7 @@ class GitoliteLogParser(object):
 
         if self.emails:
             subject = 'Gitolite log report - %s' % self.prev_datestring
+            print 'sending %s'%subject
             message = self.parsed[self.prev_datestring]['report']
             MailMan.mail_send(MailMan(self.emails), subject, message)
 
