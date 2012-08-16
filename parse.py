@@ -8,7 +8,8 @@ import pygeoip
 from mailer import MailMan
 
 
-GIO = pygeoip.GeoIP('/usr/share/GeoIP/GeoIP.dat')
+GIO_CITY = pygeoip.GeoIP('GeoLiteCity.dat') #'/usr/share/GeoIP/GeoIP.dat')
+GIO = pygeoip.GeoIP('GeoIP.dat')
 READ_TPL = ['date', 'user', 'ip', 'raw_repo']
 WRITE_PARTIAL_TPL = ['value5', 'value6', 'value7', 'value8',
                      'value9', 'value10']
@@ -49,13 +50,12 @@ def format_report(msg):
     Report tpl
     """
     assert type(msg) == dict, 'Error! Dict required.'
-    report = 'Users: \n%(users)s\n'\
-             'Countries: \n%(countries)s\n'\
-             'Users countries: \n%(users_countries)s\n'\
-             'Repositories: \n%(repositories)s\n'\
-             'Users repositories: \n%(users_repositories)s\n'\
-             'IPS: \n%(ips)s\n'\
-             'Errors: \n%(errors)s\n' % msg
+    mykeys = ['users','countries','cities','users_countries','users_cities','repositories','users_repositories','errors'] #,'ips'
+    report=''
+    for key in mykeys:
+        if len(msg[key]):
+            report+=key.capitalize()+': \n'+msg[key]+'\n'
+            
     return report
 
 
@@ -73,36 +73,43 @@ class GitoliteLogParser(object):
 
     parsed_tpl = {
         'countries': [],
+        'cities':[],
         'ips': [],
         'users': [],
         'repositories': [],
         'report': {
             'errors': [],
             'countries': {},
+            'cities':{},
             'repositories': {},
             'users': {},
             'ips': {},
             'users_repositories': {},
             'users_countries': {},
+            'users_cities':{},
         }
     }
     key_plural = {
         'country': 'countries',
+        'city':'cities',
         'user': 'users',
         'ip': 'ips',
         'repo': 'repositories',
     }
     summary_tpl = {
         'countries': [],
+        'cities':[],
         'users': [],
         'repositories': [],
         'ips': [],
         'users_countries': [],
+        'users_cities':[],
         'users_repositories': [],
     }
 
     composite_keys = {
         'users_countries': ['user', 'country'],
+        'users_cities': ['user', 'city'],
         'users_repositories': ['user', 'repo'],
     }
 
@@ -175,8 +182,10 @@ class GitoliteLogParser(object):
         # clean reports tmp
         self.users_repositories_tmp = []
         self.users_countries_tmp = []
+        self.users_cities_tmp = []
         self.repositories_tmp = []
         self.countries_tmp = []
+        self.cities_tmp = []
 
         # save summary
         self.dump2json(
@@ -205,7 +214,6 @@ class GitoliteLogParser(object):
                 if not msg.get(key):
                     msg[key] = ''
                 msg[key] = data
-
             MailMan.mail_send(
                 MailMan(self.emails), subject, format_report(msg))
 
@@ -254,6 +262,9 @@ class GitoliteLogParser(object):
 
         # parse line section
         self.line['country'] = GIO.country_code_by_addr(self.line['ip'])
+        rec = GIO_CITY.record_by_addr(self.line['ip'])
+        if rec: self.line['city'] = rec['city']
+        else: self.line['city'] = '?'
 
         self.line['date'] = self.parsed_date.strftime('%Y-%m-%d.%H:%M:%S')
         try:
