@@ -107,7 +107,7 @@ class GitoliteLogParser(object):
     }
 
     def __init__(self, filepath, emails, date=None):
-        assert os.path.exists(filepath)
+        assert filepath and os.path.exists(filepath)
         self.log = open(filepath, 'r')
         self.line = str()
         self.emails = emails
@@ -291,7 +291,7 @@ if __name__ == '__main__':
         description='Gitolie log file parser', add_help=True)
 
     optparser.add_argument('--filepath', action='store', dest='filepath',
-                           help='path to gitolite log file')
+                           help='path to gitolite log file',required=True)
 
     optparser.add_argument('--email', action='append', dest='emails',
                            help='emails for send reports')
