@@ -143,9 +143,9 @@ class GitoliteLogParser(object):
         for key in keys:
             if self.line.get(key):
                 partial_key.append(self.line.get(key))
-        if len(partial_key) >= 2:
-            return '_'.join(partial_key)
-        return None
+        if len(partial_key) < 2:
+            partial_key.append('')
+        return '_'.join(partial_key)
 
     def _insert_composite(self):
         for composite_key, value in self.composite_keys.iteritems():
