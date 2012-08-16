@@ -102,6 +102,46 @@ class GitoliteLogParser(object):
         json.dump(object2save, to_save, indent=1)
         to_save.close()
 
+    def _format_reports_dict(self, report):
+        assert type(report) == dict, 'Error! Dict required.'
+        formatted = []
+        report_tpl = '\t%s: \n%s'
+        line_tpl = '\t\t%s: %s;'
+        for key, value in report.iteritems():
+            formatted.append(report_tpl % (key, self._format_line(
+                value, line_tpl)))
+        return ''.join(formatted)
+
+    def _format_errors(self, errors):
+        assert type(errors) == list, 'Error! List required.'
+        formatted_errors = []
+        line_tpl = '\t%s: %s;'
+        for error in errors:
+            formatted_errors.append(self._format_line(error, line_tpl))
+        return ''.join(formatted_errors)
+
+    def _format_line(self, line, line_tpl):
+        assert type(line) == dict, 'Error! Dict required.'
+        formatted = []
+        for key, value in line.iteritems():
+            formatted.append(line_tpl % (key, value))
+        formatted.append('\n')
+        return '\n'.join(formatted)
+
+    def _format_report(self, msg):
+        """
+        Report tpl
+        """
+        assert type(msg) == dict, 'Error! Dict required.'
+        report = 'Errors: \n%(errors)s\n'\
+                 'Users: \n%(users)s\n'\
+                 'Countries: \n%(countries)s\n'\
+                 'Users countries: \n%(users_countries)s\n'\
+                 'Repositories: \n%(repositories)s\n'\
+                 'Users repositories: \n%(users_repositories)s\n'\
+                 'IPS: \n%(ips)s\n' % msg
+        return report
+
     def _manage_state(self):
         print 'start new date', self.prev_datestring, self.datestring
         # clean reports tmp
@@ -112,19 +152,35 @@ class GitoliteLogParser(object):
 
         # save summary
         self.dump2json(
-            self.summary, self.prev_datestring, 'summary.json'
+            self.summary, self.prev_datestring, 'agg.json'
         )
 
-        # save parsed
+        parsed = self.parsed.get(self.prev_datestring)
+        report = parsed.get('report')
+        # save report
+        self.dump2json(report, self.prev_datestring, 'digest.json')
+        del parsed['report']
         self.dump2json(
             self.parsed.get(self.prev_datestring),
-            self.prev_datestring, 'parsed.json'
+            self.prev_datestring, 'summary.json'
         )
-
+        self._format_reports_dict(report.get('countries', []))
         if self.emails:
+            report_tpl = self.parsed_tpl.get('report')
+            msg = dict()
             subject = 'Gitolite log report - %s' % self.prev_datestring
-            message = self.parsed[self.prev_datestring]['report']
-            MailMan.mail_send(MailMan(self.emails), subject, message)
+            for key in report_tpl.keys():
+
+                if key == 'errors':
+                    data = self._format_errors(report.get(key, []))
+                else:
+                    data = self._format_reports_dict(report.get(key, {}))
+                if not msg.get(key):
+                    msg[key] = ''
+                msg[key] = data
+
+            MailMan.mail_send(
+                MailMan(self.emails), subject, self._format_report(msg))
 
         self.prev_datestring = self.datestring
         self.prev_summary = deepcopy(self.summary)
@@ -229,7 +285,7 @@ if __name__ == '__main__':
 
     optparser.add_argument('--date', action='store', dest='date',
                            help='parse log row only this date.'
-                           ' format: YYYY:MM:DD')
+                           ' format: YYYY-MM-DD')
     args = optparser.parse_args()
 
     # init and run parser
