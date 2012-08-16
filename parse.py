@@ -119,6 +119,9 @@ class GitoliteLogParser(object):
         self.line = str()
         self.emails = emails
         self.date = date
+        if self.date=='yesterday': 
+            self.date=(datetime.datetime.now()-datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+
         if date is not None:
             self.summary = self._open_summary()
         else:
@@ -311,7 +314,7 @@ if __name__ == '__main__':
                            help='parse log row only this date.'
                            ' format: YYYY-MM-DD')
     args = optparser.parse_args()
-
+        
     # init and run parser
     parser = GitoliteLogParser(args.filepath, args.emails, args.date)
     parser.reader()
