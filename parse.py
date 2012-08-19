@@ -9,6 +9,7 @@ import pygeoip
 from mailer import MailMan
 
 
+GIO_CITY = pygeoip.GeoIP('GeoLiteCity.dat')  # '/usr/share/GeoIP/GeoIP.dat')
 GIO = pygeoip.GeoIP('/usr/share/GeoIP/GeoIP.dat')
 READ_TPL = ['date', 'user', 'ip', 'raw_repo']
 WRITE_PARTIAL_TPL = ['value5', 'value6', 'value7', 'value8',
@@ -50,13 +51,18 @@ def format_report(msg):
     Report tpl
     """
     assert type(msg) == dict, 'Error! Dict required.'
-    report = 'Users: \n%(users)s\n'\
-             'Countries: \n%(countries)s\n'\
-             'Users countries: \n%(users_countries)s\n'\
-             'Repositories: \n%(repositories)s\n'\
-             'Users repositories: \n%(users_repositories)s\n'\
-             'IPS: \n%(ips)s\n'\
-             'Errors: \n%(errors)s\n' % msg
+    mykeys = ['users',
+              'countries',
+              'cities',
+              'users_countries',
+              'users_cities',
+              'repositories',
+              'users_repositories',
+              'errors']  # ,'ips'
+    report = ''
+    for key in mykeys:
+        if len(msg[key]):
+            report += key.capitalize() + ': \n' + msg[key] + '\n'
     return report
 
 
@@ -74,41 +80,48 @@ class GitoliteLogParser(object):
 
     parsed_tpl = {
         'countries': [],
+        'cities': [],
         'ips': [],
         'users': [],
         'repositories': [],
         'report': {
             'errors': [],
             'countries': {},
+            'cities': {},
             'repositories': {},
             'users': {},
             'ips': {},
             'users_repositories': {},
             'users_countries': {},
+            'users_cities': {},
         }
     }
     key_plural = {
         'country': 'countries',
+        'city': 'cities',
         'user': 'users',
         'ip': 'ips',
         'repo': 'repositories',
     }
     summary_tpl = {
         'countries': [],
+        'cities': [],
         'users': [],
         'repositories': [],
         'ips': [],
         'users_countries': [],
+        'users_cities': [],
         'users_repositories': [],
     }
 
     composite_keys = {
         'users_countries': ['user', 'country'],
+        'users_cities': ['user', 'city'],
         'users_repositories': ['user', 'repo'],
     }
 
     def __init__(self, filepath, emails, date=None, new_load=None):
-        assert os.path.exists(filepath)
+        assert filepath and os.path.exists(filepath)
         self.log = open(filepath, 'r')
         self.line = str()
         self.emails = emails
@@ -116,6 +129,11 @@ class GitoliteLogParser(object):
         self.new_load = new_load
         self.open_summary = False
         self.last_day = False
+        if self.date == 'yesterday':
+            self.date = (
+                datetime.datetime.now() - datetime.timedelta(days=1))\
+                    .strftime('%Y-%m-%d')
+
         if date is not None:
             self.summary = self._open_summary(date)
         elif new_load is None:
@@ -186,8 +204,10 @@ class GitoliteLogParser(object):
         # clean reports tmp
         self.users_repositories_tmp = []
         self.users_countries_tmp = []
+        self.users_cities_tmp = []
         self.repositories_tmp = []
         self.countries_tmp = []
+        self.cities_tmp = []
 
         # save summary
         self.dump2json(
@@ -216,7 +236,6 @@ class GitoliteLogParser(object):
                 if not msg.get(key):
                     msg[key] = ''
                 msg[key] = data
-
             MailMan.mail_send(
                 MailMan(self.emails), subject, format_report(msg))
 
@@ -274,6 +293,11 @@ class GitoliteLogParser(object):
 
         # parse line section
         self.line['country'] = GIO.country_code_by_addr(self.line['ip'])
+        rec = GIO_CITY.record_by_addr(self.line['ip'])
+        if rec:
+            self.line['city'] = rec['city']
+        else:
+            self.line['city'] = '?'
 
         self.line['date'] = self.parsed_date.strftime('%Y-%m-%d.%H:%M:%S')
         try:
@@ -313,7 +337,7 @@ if __name__ == '__main__':
         description='Gitolie log file parser', add_help=True)
 
     optparser.add_argument('--filepath', action='store', dest='filepath',
-                           help='path to gitolite log file')
+                           help='path to gitolite log file', required=True)
 
     optparser.add_argument('--email', action='append', dest='emails',
                            help='emails for send reports')
