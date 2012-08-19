@@ -1,4 +1,5 @@
 import argparse
+import calendar
 import datetime
 import json
 import os
@@ -106,18 +107,23 @@ class GitoliteLogParser(object):
         'users_repositories': ['user', 'repo'],
     }
 
-    def __init__(self, filepath, emails, date=None):
+    def __init__(self, filepath, emails, date=None, new_load=None):
         assert os.path.exists(filepath)
         self.log = open(filepath, 'r')
         self.line = str()
         self.emails = emails
         self.date = date
+        self.new_load = new_load
+        self.open_summary = False
+        self.last_day = False
         if date is not None:
-            self.summary = self._open_summary()
+            self.summary = self._open_summary(date)
+        elif new_load is None:
+            self.open_summary = True
         else:
             self.summary = deepcopy(self.summary_tpl)
 
-        if self.prev_summary is None:
+        if self.prev_summary is None and not self.open_summary:
             self.prev_summary = deepcopy(self.summary)
 
     def _data_inserter(self, data_object):
@@ -126,15 +132,20 @@ class GitoliteLogParser(object):
                     and self.line[key] not in data_object[value]:
                 data_object[value].append(self.line[key])
 
-    def _open_summary(self):
-        parse_date = datetime.datetime.strptime(self.date, '%Y-%m-%d')
+    def _open_summary(self, date):
+        parse_date = datetime.datetime.strptime(date, '%Y-%m-%d')
         date = parse_date - datetime.timedelta(1)
         date = date.strftime('%Y-%m-%d')
         filepath = '/'.join([self.root_dir, date, 'agg.json'])
         try:
             assert os.path.exists(filepath)
         except:
-            return deepcopy(self.summary_tpl)
+            if self.new_load:
+                return deepcopy(self.summary_tpl)
+            else:
+                print "Preview summary not found, "\
+                      "use --new-load for exclude this error"
+                raise
         fp = open(filepath, 'r')
         return json.load(fp)
 
@@ -245,6 +256,15 @@ class GitoliteLogParser(object):
         self.parsed_date = datetime.datetime.strptime(self.line['date'],
                                                       '%Y-%m-%d.%H:%M:%S')
         self.datestring = self.parsed_date.strftime('%Y-%m-%d')
+        last_day = calendar.mdays[self.parsed_date.month]
+
+        if last_day == self.parsed_date.day:
+            self.last_day = True
+
+        if self.open_summary:
+            self.summary = self._open_summary(self.datestring)
+            self.open_summary = False
+            self.prev_summary = deepcopy(self.summary)
 
         if self.date and self.datestring != self.date:
             if self.prev_datestring \
@@ -271,7 +291,6 @@ class GitoliteLogParser(object):
 
         if self.prev_datestring != self.datestring:
             self._manage_state()
-
         # insert data to aggretaion
         self.insert_aggregation()
 
@@ -284,6 +303,9 @@ class GitoliteLogParser(object):
     def reader(self):
         for line in self.log.readlines():
             self.parser(line)
+
+        if self.last_day:
+            self._manage_state()
 
 
 if __name__ == '__main__':
@@ -299,8 +321,13 @@ if __name__ == '__main__':
     optparser.add_argument('--date', action='store', dest='date',
                            help='parse log row only this date.'
                            ' format: YYYY-MM-DD')
+
+    optparser.add_argument('--new-load', action='store_true', dest='new_load',
+                           default=None, help='Init new summary.')
+
     args = optparser.parse_args()
 
     # init and run parser
-    parser = GitoliteLogParser(args.filepath, args.emails, args.date)
+    parser = GitoliteLogParser(
+        args.filepath, args.emails, args.date, args.new_load)
     parser.reader()
