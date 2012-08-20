@@ -328,6 +328,15 @@ class GitoliteLogParser(object):
         for line in self.log.readlines():
             self.parser(line)
 
+        if self.date:
+            date = datetime.datetime.strptime(self.date, '%Y-%m-%d')
+            last_day = calendar.mdays[date.month]
+
+            if last_day == date.day:
+                self.last_day = True
+            else:
+                self.last_day = False
+
         if self.last_day:
             self._manage_state()
 
