@@ -1,4 +1,4 @@
-GeoIP*.dat
+Geo*.dat
 logs/
 parsed/
 reports/
