@@ -341,6 +341,8 @@ class GitoliteLogParser(object):
                 self.last_day = True
             else:
                 self.last_day = False
+        if self.date and not self.last_day and self.date == self.datestring:
+            self._manage_state()
 
         if self.last_day or not self.date:
             self._manage_state()
