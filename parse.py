@@ -162,7 +162,7 @@ class GitoliteLogParser(object):
                 return deepcopy(self.summary_tpl)
             else:
                 print "Previous summary (%s) not found, "\
-                      "use --new-load for exclude this error"%(filepath)
+                      "use --new-load for exclude this error" % (filepath)
                 raise
         fp = open(filepath, 'r')
         return json.load(fp)
