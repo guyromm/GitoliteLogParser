@@ -67,9 +67,15 @@ def format_report(msg):
 
 
 def convdate(dt):
+    daysdelta=None
     if dt == 'yesterday':
+        daysdelta=1
+    elif dt == 'today':
+        daysdelta=0
+
+    if daysdelta is not None:
         dt = (
-            datetime.datetime.now() - datetime.timedelta(days=1))\
+            datetime.datetime.now() - datetime.timedelta(days=daysdelta))\
             .strftime('%Y-%m-%d')
     return dt
 
