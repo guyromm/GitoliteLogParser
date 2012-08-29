@@ -65,12 +65,14 @@ def format_report(msg):
             report += key.capitalize() + ': \n' + msg[key] + '\n'
     return report
 
+
 def convdate(dt):
     if dt == 'yesterday':
         dt = (
             datetime.datetime.now() - datetime.timedelta(days=1))\
             .strftime('%Y-%m-%d')
     return dt
+
 
 class GitoliteLogParser(object):
     parsed = dict()
@@ -136,7 +138,6 @@ class GitoliteLogParser(object):
         self.open_summary = False
         self.last_day = False
         self.date = convdate(self.date)
-
 
         if date is not None:
             self.summary = self._open_summary(convdate(date))
@@ -341,7 +342,7 @@ class GitoliteLogParser(object):
             else:
                 self.last_day = False
 
-        if self.last_day:
+        if self.last_day or not self.date:
             self._manage_state()
 
 
