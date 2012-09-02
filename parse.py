@@ -202,6 +202,9 @@ class GitoliteLogParser(object):
         self._insert_composite()
 
     def dump2json(self, object2save, date, filename):
+        assert self.root_dir
+        assert date
+        assert filename
         path = '/'.join([self.root_dir, date, filename])
         dirname = os.path.dirname(path)
         if not os.path.exists(dirname):
@@ -212,6 +215,8 @@ class GitoliteLogParser(object):
 
     def _manage_state(self):
         print 'start new date', self.prev_datestring, self.datestring
+        assert self.prev_datestring
+        assert self.datestring
         # clean reports tmp
         self.users_repositories_tmp = []
         self.users_countries_tmp = []
