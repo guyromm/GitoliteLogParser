@@ -135,7 +135,8 @@ class GitoliteLogParser(object):
     }
 
     def __init__(self, filepath, emails, date=None, new_load=None):
-        assert filepath and os.path.exists(filepath)
+        if filepath=='yesterday': filepath = os.path.join('logs','gitolite-'+(datetime.datetime.now()-datetime.timedelta(days=1)).strftime('%Y-%m')+'.log')
+        assert filepath and os.path.exists(filepath),"%s does not exist."%filepath
         self.log = open(filepath, 'r')
         self.line = str()
         self.emails = emails
