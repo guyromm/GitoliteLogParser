@@ -65,12 +65,20 @@ def format_report(msg):
             report += key.capitalize() + ': \n' + msg[key] + '\n'
     return report
 
+
 def convdate(dt):
+    daysdelta=None
     if dt == 'yesterday':
+        daysdelta=1
+    elif dt == 'today':
+        daysdelta=0
+
+    if daysdelta is not None:
         dt = (
-            datetime.datetime.now() - datetime.timedelta(days=1))\
+            datetime.datetime.now() - datetime.timedelta(days=daysdelta))\
             .strftime('%Y-%m-%d')
     return dt
+
 
 class GitoliteLogParser(object):
     parsed = dict()
@@ -127,7 +135,8 @@ class GitoliteLogParser(object):
     }
 
     def __init__(self, filepath, emails, date=None, new_load=None):
-        assert filepath and os.path.exists(filepath)
+        if filepath=='yesterday': filepath = os.path.join('logs','gitolite-'+(datetime.datetime.now()-datetime.timedelta(days=1)).strftime('%Y-%m')+'.log')
+        assert filepath and os.path.exists(filepath),"%s does not exist."%filepath
         self.log = open(filepath, 'r')
         self.line = str()
         self.emails = emails
@@ -136,7 +145,6 @@ class GitoliteLogParser(object):
         self.open_summary = False
         self.last_day = False
         self.date = convdate(self.date)
-
 
         if date is not None:
             self.summary = self._open_summary(convdate(date))
@@ -166,7 +174,7 @@ class GitoliteLogParser(object):
                 return deepcopy(self.summary_tpl)
             else:
                 print "Previous summary (%s) not found, "\
-                      "use --new-load for exclude this error"%(filepath)
+                      "use --new-load for exclude this error" % (filepath)
                 raise
         fp = open(filepath, 'r')
         return json.load(fp)
@@ -195,6 +203,9 @@ class GitoliteLogParser(object):
         self._insert_composite()
 
     def dump2json(self, object2save, date, filename):
+        assert self.root_dir
+        assert date
+        assert filename
         path = '/'.join([self.root_dir, date, filename])
         dirname = os.path.dirname(path)
         if not os.path.exists(dirname):
@@ -205,6 +216,8 @@ class GitoliteLogParser(object):
 
     def _manage_state(self):
         print 'start new date', self.prev_datestring, self.datestring
+        assert self.prev_datestring
+        assert self.datestring
         # clean reports tmp
         self.users_repositories_tmp = []
         self.users_countries_tmp = []
@@ -340,8 +353,10 @@ class GitoliteLogParser(object):
                 self.last_day = True
             else:
                 self.last_day = False
+        if self.date and not self.last_day and self.date == self.datestring:
+            self._manage_state()
 
-        if self.last_day:
+        if self.last_day or not self.date:
             self._manage_state()
 
 
