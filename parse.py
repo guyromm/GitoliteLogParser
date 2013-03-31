@@ -134,7 +134,7 @@ class GitoliteLogParser(object):
         'users_repositories': ['user', 'repo'],
     }
 
-    def __init__(self, filepath, emails, date=None, new_load=None):
+    def __init__(self, filepath, emails, date=None, new_load=None,nostate=False):
         if filepath=='yesterday': filepath = os.path.join('logs','gitolite-'+(datetime.datetime.now()-datetime.timedelta(days=1)).strftime('%Y-%m')+'.log')
         assert filepath and os.path.exists(filepath),"%s does not exist."%filepath
         self.log = open(filepath, 'r')
@@ -145,8 +145,9 @@ class GitoliteLogParser(object):
         self.open_summary = False
         self.last_day = False
         self.date = convdate(self.date)
+        self.nostate=nostate
 
-        if date is not None:
+        if date is not None and not self.nostate:
             self.summary = self._open_summary(convdate(date))
         elif new_load is None:
             self.open_summary = True
@@ -345,6 +346,8 @@ class GitoliteLogParser(object):
         for line in self.log.readlines():
             self.parser(line)
 
+        if self.nostate: return False
+
         if self.date:
             date = datetime.datetime.strptime(self.date, '%Y-%m-%d')
             last_day = calendar.mdays[date.month]
@@ -358,7 +361,7 @@ class GitoliteLogParser(object):
 
         if self.last_day or not self.date:
             self._manage_state()
-
+        return True
 
 if __name__ == '__main__':
     optparser = argparse.ArgumentParser(
