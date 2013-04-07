@@ -10,10 +10,15 @@
       function drawChart() {
 
         // Create the data table.
-        var data = new google.visualization.DataTable();
-        data.addColumn('string', 'Topping');
-        data.addColumn('number', 'Times');
-        data.addRows(times);
+        var users_data = new google.visualization.DataTable();
+        users_data.addColumn('string', 'Topping');
+        users_data.addColumn('number', 'Times');
+        users_data.addRows(times);
+
+	  var repos_data = new google.visualization.DataTable();
+	  repos_data.addColumn('string','Repository');
+	  repos_data.addColumn('number','Times');
+	  repos_data.addRows(repos);
 
         // Set chart options
         var options = {'title':'Amount of access',
@@ -22,32 +27,56 @@
 
         // Instantiate and draw our chart, passing in some options.
         var chart = new google.visualization.BarChart(document.getElementById('chart_div'));
-        chart.draw(data, options);
-	for (var u in overtime)
+        chart.draw(users_data, options);
+
+	var repochart = new google.visualization.PieChart(document.getElementById('repos_div'));
+	repochart.draw(repos_data,options);
+
+	  for (var u in repoovertime)
 	  {
-	      var d = overtime[u];
-	      var rd=[];
-	      for (var date in d)
-	      {
-		  var app = [date,d[date]];
-		  rd.push(app);
-		  console.log(app); 
-	      }
-	      rd.sort(function(s1,s2) {
-		  if (s1[0]>s2[0]) return 1;
-		  else if (s1[0]<s2[0]) return -1;
-		  else return 0;
-	      })
+	      var d = repoovertime[u];
 	      var dv = $('<div></div>').attr('id',u);
 	      dv.append($('<h3></h3>').text(u));
 	      var chel = $('<div></div>').addClass('chart')
 	      dv.append(chel);
 
-	      var data = google.visualization.arrayToDataTable(rd,true);
-	      var ch = new google.visualization.ColumnChart(chel[0]);
+	      var data = new google.visualization.DataTable();
+	      data.addColumn('string','Date');
+	      for (var k in repos) data.addColumn('number',repos[k][0]);
+	      var out=[]
+	      for (var date in d)
+	      {
+		  out.push([date,d[date]]);
+	      }
+
+	      out.sort(function(e1,e2) {
+		  if (e1[0]>e2[0]) return 1;
+		  else if (e1[0]<e2[0]) return -1;
+		  else return 0;
+	      });
+	      for (var i in out)
+	      {
+		  var date = out[i][0];
+		  
+		  var spl = date.split('-');
+		  var dt = new Date(spl[0],spl[1],spl[2]);
+
+		  var row=[];
+		  row.push(date);
+		  for (var repo in repos) {
+		      var r = repos[repo][0];
+		      row.push(out[i][1][r]);
+		  }
+
+		  data.addRow(row);
+	      }
+
+
+	      var ch = new google.visualization.SteppedAreaChart(chel[0]);
 	      var options = {
 		  title: u+' over time',
 		  hAxis: {title: 'Dates', titleTextStyle: {color: 'red'}},
+		  isStacked:true,
 		  width:1200,
 		  heig:800
               };
@@ -55,6 +84,7 @@
 	      ch.draw(data,options);
 	      //console.log(dv.html());
 	      $('body').append(dv);
+	      delete data;
 
 	  }
       }

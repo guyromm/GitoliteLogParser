@@ -2,9 +2,12 @@
 <head>
 <script type="text/javascript" src="https://www.google.com/jsapi"></script>
 <script type="text/javascript" src="http://code.jquery.com/jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.4.4/underscore-min.js"></script>
     <script type="text/javascript">
 
       var overtime = ${OVERTIME};
+      var repoovertime = ${REPOOVERTIME};
+      var repos = ${REPOS};
       var times = ${TIMES};
     </script>
     <script type='text/javascript' src='report.js'></script>
@@ -13,6 +16,6 @@
 </head>
 <body>
     <div id="chart_div"></div>
-
+    <div id="repos_div"></div>
 </body>
 </html>

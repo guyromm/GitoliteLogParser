@@ -8,6 +8,13 @@ logs_dir = 'logs/'
 from parse import GitoliteLogParser
 
 class Report(object):
+    @staticmethod
+    def cleanrepo(repo):
+        if repo.startswith('/'):
+            repo = repo[1:]
+        if repo.endswith('.git'):
+            repo = repo[0:-4]
+        return repo
     def cmdrun(self):
         optparser = argparse.ArgumentParser(
             description='Gitolie report generator', add_help=True)
@@ -41,13 +48,26 @@ class Report(object):
             while i<=to:
                 dt = i.strftime('%Y-%m-%d')
                 if dt not in self.overtime[u]: self.overtime[u][dt]=0
+
+                if dt not in self.repoovertime[u]:
+                    self.repoovertime[u][dt]={}
+                    
                 i+=datetime.timedelta(days=1)
+
+        for u in self.repoovertime:
+            for dt in self.repoovertime[u]:
+                for r in self.repos:
+                    if r not in self.repoovertime[u][dt]:
+                        self.repoovertime[u][dt][r]=0
+
         self.report()
 
     times = {}
     overtime={}
     repoovertime={}
     total={}
+    repos={}
+
     mind=None
     maxd=None
     def aggregate(self,urep,dtstr):
@@ -58,9 +78,13 @@ class Report(object):
             except ValueError:
                 print 'could not parse %s'%ur
                 continue
+            r = Report.cleanrepo(r)
 
             if u not in self.times: self.times[u]=0
             self.times[u]+=1
+
+            if r not in self.repos: self.repos[r]=0
+            self.repos[r]+=1
 
             if u not in self.overtime: self.overtime[u]={}
             if dtstr not in self.overtime[u]: self.overtime[u][dtstr]=0
@@ -75,8 +99,11 @@ class Report(object):
             self.total[dtstr]+=1
     def report(self):
         r = open('report.html','r').read()
-        r=r.replace('${TIMES}',json.dumps(self.times.items()))
-        r=r.replace('${OVERTIME}',json.dumps(self.overtime))
+        r=r.replace('${TIMES}',json.dumps(self.times.items(),indent=True))
+        r=r.replace('${REPOS}',json.dumps(self.repos.items(),indent=True))
+        r=r.replace('${OVERTIME}',json.dumps(self.overtime,indent=True))
+        r=r.replace('${REPOOVERTIME}',json.dumps(self.repoovertime,indent=True))
+
         assert '${' not in r
         fp = open(self.args.save_to,'w') ; fp.write(r)  ; fp.close()
 
